@@ -4,10 +4,12 @@
 
 A comprehensive collection of production-ready Bash scripts for DevOps engineers, system administrators, and automation enthusiasts. These scripts handle everything from system monitoring and backups to Kubernetes management and CI/CD integrations.
 
+[![CI](https://github.com/wesleyscholl/bash-scripts/actions/workflows/ci.yml/badge.svg)](https://github.com/wesleyscholl/bash-scripts/actions/workflows/ci.yml)
+[![ShellCheck](https://img.shields.io/badge/ShellCheck-passing-brightgreen.svg)](https://www.shellcheck.net/)
+[![Tests](https://img.shields.io/badge/Tests-265%20passing-brightgreen.svg)](tests/)
+[![Scripts](https://img.shields.io/badge/Scripts-44%20production--ready-blue.svg)](scripts/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Shell](https://img.shields.io/badge/Shell-Bash-green.svg)](https://www.gnu.org/software/bash/)
-[![Test Coverage](https://img.shields.io/badge/Test%20Coverage-100%25-brightgreen.svg)](tests/)
-[![Tests](https://img.shields.io/badge/Tests-443%20total%2C%20434%20passing-success.svg)](tests/)
 
 <img width="600" alt="bash" src="https://github.com/user-attachments/assets/2bd21a84-eac3-4309-9404-3b21bf31ac26" />
 
@@ -54,8 +56,11 @@ This repository contains battle-tested Bash scripts designed to automate common 
 | `argo-cd-sync.sh` | Synchronizes ArgoCD applications |
 | `auto-deployment.sh` | Automates application deployment workflows |
 | `sonarqube-slack-notify.sh` | Sends SonarQube analysis results to Slack |
+| `terraform-plan-notify.sh` | Runs `terraform plan` and posts the summary to Slack |
 | `create-confluence-page.sh` | Creates and updates Confluence documentation pages |
 | `git-repo-stats.sh` | Generates comprehensive Git repository statistics |
+| `git-cleanup-merged.sh` | Deletes merged local (and optionally remote) branches |
+| `docker-image-prune.sh` | Prunes dangling or unused Docker images by age/label |
 
 ### Monitoring & Alerting
 
@@ -67,8 +72,10 @@ This repository contains battle-tested Bash scripts designed to automate common 
 | `splunk-search.sh` | Performs automated Splunk log searches |
 | `check-ssl-expiry.sh` | Monitors SSL certificate expiration dates |
 | `docker-log-monitor.sh` | Monitors and analyzes Docker container logs |
-| `log-monitor.sh` | Monitors log files for keywords with real-time alerts and email notifications |
-| `system-resource-reporter.sh` | Generates comprehensive system resource reports in multiple formats |
+| `log-monitor.sh` | Monitors log files for keywords with real-time alerts |
+| `system-resource-reporter.sh` | Generates comprehensive system resource reports |
+| `aws-cost-alert.sh` | Queries AWS Cost Explorer and alerts via Slack when spend exceeds a threshold |
+| `cert-auto-renew.sh` | Runs `certbot renew` and reloads the web server only when a cert is renewed |
 
 ### Backup & Recovery
 
@@ -80,6 +87,7 @@ This repository contains battle-tested Bash scripts designed to automate common 
 | `rotate-old-files.sh` | Implements file rotation policies |
 | `log-rotation.sh` | Manages log file rotation and archival |
 | `log-file-cleanup.sh` | Cleans up old log files based on retention policies |
+| `db-backup.sh` | Dumps MySQL or PostgreSQL databases with gzip compression and retention rotation |
 
 ### Container & Kubernetes
 
@@ -89,16 +97,20 @@ This repository contains battle-tested Bash scripts designed to automate common 
 | `scale-deployment.sh` | Scales Kubernetes deployments automatically |
 | `restart-containers.sh` | Restarts Docker containers based on criteria |
 | `gc-cleanup.sh` | Performs garbage collection and cleanup tasks |
+| `k8s-pod-logs-export.sh` | Exports logs from all pods in a namespace to individual timestamped files |
+| `service-discovery.sh` | Lists all services in a k8s namespace with type, cluster IP, ports, and optional endpoints |
 
 ### Utilities
 
 | Script | Description |
 |--------|-------------|
 | `random-password-generator.sh` | Generates secure random passwords |
+| `log-aggregator.sh` | Tails multiple log files into one aggregated output with timestamps and source labels |
+| `secret-rotation.sh` | Rotates a secret in AWS Secrets Manager or HashiCorp Vault |
 
 ## 🔧 Prerequisites
 
-- Bash 4.0 or higher
+- Bash 3.2+ (macOS-compatible; scripts are compatible with bash 3.2 and higher)
 - Standard Unix utilities (grep, awk, sed, etc.)
 - **Testing Framework**: BATS (Bash Automated Testing System) for running tests
 - Specific tools required by individual scripts:
