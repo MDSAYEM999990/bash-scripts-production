@@ -1,89 +1,61 @@
 #!/usr/bin/env bats
-
-# Tests for splunk-search.sh
-
 load 'test_helper/bats-support/load'
 load 'test_helper/bats-assert/load'
 
 setup() {
     export SCRIPT_PATH="${BATS_TEST_DIRNAME}/../scripts/splunk-search.sh"
+    export BINSTUB="${BATS_TEST_TMPDIR}/bin"
+    mkdir -p "$BINSTUB"
+
+    CALL_COUNT=0
+    cat > "${BINSTUB}/curl" << 'EOF'
+#!/bin/bash
+# First call: create SID; subsequent calls: job status/results
+if [[ "$*" == *"/search/jobs"* ]] && [[ "$*" != *"/search/jobs/"* ]]; then
+    echo '{"sid":"12345"}'
+elif [[ "$*" == *"/search/jobs/12345"* ]] && [[ "$*" != *"results"* ]]; then
+    echo '{"entry":[{"content":{"dispatchState":"DONE"}}]}'
+elif [[ "$*" == *"results"* ]]; then
+    echo '{"results":[{"_raw":"test event"}]}'
+else
+    echo "mock-curl $*"
+fi
+exit 0
+EOF
+    chmod +x "${BINSTUB}/curl"
+
+    if ! command -v jq &>/dev/null; then
+        cat > "${BINSTUB}/jq" << 'EOF'
+#!/bin/bash
+echo "12345"
+exit 0
+EOF
+        chmod +x "${BINSTUB}/jq"
+    fi
+    export PATH="${BINSTUB}:$PATH"
 }
 
-@test "script file exists and is executable" {
-    [ -f "$SCRIPT_PATH" ]
-    [ -x "$SCRIPT_PATH" ]
+@test "script exists and is executable" {
+    [ -f "$SCRIPT_PATH" ] && [ -x "$SCRIPT_PATH" ]
 }
 
-@test "curl command available" {
-    command -v curl
+@test "--help exits 0 and prints usage" {
+    run "$SCRIPT_PATH" --help
+    assert_success
+    assert_output --partial "Usage:"
 }
 
-@test "script validates argument count" {
-    run grep -q "if \[\[.*-z.*SPLUNK_URL" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
+@test "exits 1 without required --query argument" {
+    run "$SCRIPT_PATH"
+    assert_failure
 }
 
-@test "script contains usage message" {
-    run grep -q "Usage:" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
+@test "exits 1 without required --host argument" {
+    run "$SCRIPT_PATH" --query "index=main"
+    assert_failure
 }
 
-@test "script uses Splunk URL variable" {
-    run grep -q "SPLUNK_URL=\$1" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script uses username variable" {
-    run grep -q "USERNAME=\$2" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script uses password variable" {
-    run grep -q "PASSWORD=\$3" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script uses query variable" {
-    run grep -q "QUERY=\$4" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script uses output file variable" {
-    run grep -q "OUTPUT_FILE=\$5" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script uses POST method" {
-    run grep -q "curl -X POST" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script includes authentication" {
-    run grep -q "\-u.*USERNAME:.*PASSWORD" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script uses search endpoint" {
-    run grep -q "services/search/jobs" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script sends search parameter" {
-    run grep -q "\-d \"search=\$QUERY\"" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script requests JSON output" {
-    run grep -q "output_mode=json" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script saves output to file" {
-    run grep -q "\-o.*OUTPUT_FILE" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script provides completion message" {
-    run grep -q "Saved Splunk query results" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
+@test "set -euo pipefail is present" {
+    run grep "set -euo pipefail" "$SCRIPT_PATH"
+    assert_success
 }

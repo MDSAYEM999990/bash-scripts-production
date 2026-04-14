@@ -1,5 +1,4 @@
 #!/usr/bin/env bats
-
 # Tests for argo-cd-sync.sh
 
 load 'test_helper/bats-support/load'
@@ -7,53 +6,46 @@ load 'test_helper/bats-assert/load'
 
 setup() {
     export SCRIPT_PATH="${BATS_TEST_DIRNAME}/../scripts/argo-cd-sync.sh"
+    export BINSTUB="${BATS_TEST_TMPDIR}/bin"
+    mkdir -p "$BINSTUB"
+
+    cat > "${BINSTUB}/curl" << 'EOF'
+#!/bin/bash
+echo '{"kind":"Application","status":{"sync":{"status":"Synced"}}}'
+exit 0
+EOF
+    chmod +x "${BINSTUB}/curl"
+    export PATH="${BINSTUB}:$PATH"
 }
 
-@test "script file exists and is executable" {
+@test "script exists and is executable" {
     [ -f "$SCRIPT_PATH" ]
     [ -x "$SCRIPT_PATH" ]
 }
 
-@test "curl command available" {
-    command -v curl
+@test "--help exits 0 and prints usage" {
+    run "$SCRIPT_PATH" --help
+    assert_success
+    assert_output --partial "Usage:"
 }
 
-@test "script defines ArgoCD server variable" {
-    run grep -q "ARGOCD_SERVER=" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
+@test "exits 1 without required args" {
+    run "$SCRIPT_PATH"
+    assert_failure
 }
 
-@test "script defines ArgoCD app variable" {
-    run grep -q "ARGOCD_APP=" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
+@test "exits 1 with only --server (missing --app)" {
+    run "$SCRIPT_PATH" --server argocd.example.com
+    assert_failure
 }
 
-@test "script defines ArgoCD token variable" {
-    run grep -q "ARGOCD_TOKEN=" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
+@test "invokes argocd with correct app arg" {
+    run "$SCRIPT_PATH" --server argocd.example.com --app my-app --token testtoken
+    assert_success
+    assert_output --partial "my-app"
 }
 
-@test "script uses POST method" {
-    run grep -q "curl -X POST" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script uses ArgoCD API endpoint" {
-    run grep -q "/api/v1/applications" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script uses sync endpoint" {
-    run grep -q "/sync" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script includes bearer token authentication" {
-    run grep -q "Authorization: Bearer" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script provides confirmation message" {
-    run grep -q "Triggered sync for application" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
+@test "sources utils.sh" {
+    run grep "source.*lib/utils.sh" "$SCRIPT_PATH"
+    assert_success
 }

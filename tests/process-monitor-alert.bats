@@ -1,65 +1,51 @@
-#!/usr/bin/env bats
-
-# Tests for process-monitor-alert.sh
-
+#\!/usr/bin/env bats
 load 'test_helper/bats-support/load'
 load 'test_helper/bats-assert/load'
 
 setup() {
     export SCRIPT_PATH="${BATS_TEST_DIRNAME}/../scripts/process-monitor-alert.sh"
+    export BINSTUB="${BATS_TEST_TMPDIR}/bin"
+    mkdir -p "$BINSTUB"
+
+    # Stub pgrep to simulate process found
+    cat > "${BINSTUB}/pgrep" << 'EOF'
+#\!/bin/bash
+echo "12345"
+exit 0
+EOF
+    chmod +x "${BINSTUB}/pgrep"
+
+    # Stub mail
+    cat > "${BINSTUB}/mail" << 'EOF'
+#\!/bin/bash
+echo "mock-mail $*"
+exit 0
+EOF
+    chmod +x "${BINSTUB}/mail"
+    export PATH="${BINSTUB}:$PATH"
 }
 
-@test "script file exists and is executable" {
-    [ -f "$SCRIPT_PATH" ]
-    [ -x "$SCRIPT_PATH" ]
+@test "script exists and is executable" {
+    [ -f "$SCRIPT_PATH" ] && [ -x "$SCRIPT_PATH" ]
 }
 
-@test "pgrep command available" {
-    command -v pgrep
+@test "--help exits 0 and prints usage" {
+    run "$SCRIPT_PATH" --help
+    assert_success
+    assert_output --partial "Usage:"
 }
 
-@test "mail command available" {
-    command -v mail || command -v sendmail || skip "mail command not available"
+@test "exits 1 without required --process argument" {
+    run "$SCRIPT_PATH"
+    assert_failure
 }
 
-@test "script defines process name variable" {
-    run grep -q "PROCESS_NAME=" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
+@test "exits 0 when process is running" {
+    run "$SCRIPT_PATH" --process nginx
+    assert_success
 }
 
-@test "script uses pgrep to check process" {
-    run grep -q "pgrep.*PROCESS_NAME" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script checks process status" {
-    run grep -q "if pgrep" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script reports when process is running" {
-    run grep -q "is running" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script reports when process is not running" {
-    run grep -q "is not running" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script sends alert when process is down" {
-    run grep -q "Sending alert" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script sends email alert" {
-    run grep -q "mail -s" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "pgrep can find running processes" {
-    # Try to find common processes that should be running
-    run pgrep init || run pgrep systemd || run pgrep launchd
-    # At least one should succeed on any Unix-like system
-    [ "$status" -eq 0 ] || skip "no common init process found"
+@test "set -euo pipefail is present" {
+    run grep "set -euo pipefail" "$SCRIPT_PATH"
+    assert_success
 }

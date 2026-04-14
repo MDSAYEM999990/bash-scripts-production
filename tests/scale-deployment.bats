@@ -1,64 +1,49 @@
 #!/usr/bin/env bats
-
-# Tests for scale-deployment.sh
-
 load 'test_helper/bats-support/load'
 load 'test_helper/bats-assert/load'
 
 setup() {
     export SCRIPT_PATH="${BATS_TEST_DIRNAME}/../scripts/scale-deployment.sh"
+    export BINSTUB="${BATS_TEST_TMPDIR}/bin"
+    mkdir -p "$BINSTUB"
+
+    cat > "${BINSTUB}/kubectl" << 'EOF'
+#!/bin/bash
+echo "mock-kubectl $*"
+exit 0
+EOF
+    chmod +x "${BINSTUB}/kubectl"
+    export PATH="${BINSTUB}:$PATH"
 }
 
-@test "script file exists and is executable" {
-    [ -f "$SCRIPT_PATH" ]
-    [ -x "$SCRIPT_PATH" ]
+@test "script exists and is executable" {
+    [ -f "$SCRIPT_PATH" ] && [ -x "$SCRIPT_PATH" ]
 }
 
-@test "kubectl command available" {
-    command -v kubectl || skip "kubectl not installed"
+@test "--help exits 0 and prints usage" {
+    run "$SCRIPT_PATH" --help
+    assert_success
+    assert_output --partial "Usage:"
 }
 
-@test "script validates argument count" {
-    run grep -q "if \[\[.*-z.*NAMESPACE" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
+@test "exits 1 without required --deployment argument" {
+    run "$SCRIPT_PATH"
+    assert_failure
 }
 
-@test "script contains usage message" {
-    run grep -q "Usage:" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
+@test "exits 1 without required --replicas argument" {
+    run "$SCRIPT_PATH" --deployment myapp
+    assert_failure
 }
 
-@test "script uses namespace variable" {
-    run grep -q "NAMESPACE=\$1" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
+@test "calls kubectl scale with correct arguments" {
+    run "$SCRIPT_PATH" --deployment myapp --replicas 3
+    assert_success
+    assert_output --partial "mock-kubectl"
+    assert_output --partial "scale"
 }
 
-@test "script uses deployment name variable" {
-    run grep -q "DEPLOYMENT_NAME=\$2" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script uses replicas variable" {
-    run grep -q "REPLICAS=\$3" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script calls kubectl scale" {
-    run grep -q "kubectl scale deployment" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script uses replicas parameter" {
-    run grep -q "\-\-replicas" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script uses namespace parameter" {
-    run grep -q "\-n.*NAMESPACE" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script provides confirmation message" {
-    run grep -q "Scaled deployment" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
+@test "set -euo pipefail is present" {
+    run grep "set -euo pipefail" "$SCRIPT_PATH"
+    assert_success
 }

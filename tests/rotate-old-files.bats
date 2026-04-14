@@ -1,75 +1,47 @@
-#!/usr/bin/env bats
-
-# Tests for rotate-old-files.sh
-
+#\!/usr/bin/env bats
 load 'test_helper/bats-support/load'
 load 'test_helper/bats-assert/load'
 
 setup() {
     export SCRIPT_PATH="${BATS_TEST_DIRNAME}/../scripts/rotate-old-files.sh"
-    export TEST_DIR="${BATS_TEST_TMPDIR}/rotate_test"
-    mkdir -p "$TEST_DIR"
+    export ARCHIVE_DIR="${BATS_TEST_TMPDIR}/archive"
+    export WATCH_DIR="${BATS_TEST_TMPDIR}/watch"
+    mkdir -p "$ARCHIVE_DIR" "$WATCH_DIR"
+    touch "${WATCH_DIR}/keep.txt"
 }
 
 teardown() {
-    rm -rf "$TEST_DIR"
+    rm -rf "$ARCHIVE_DIR" "$WATCH_DIR"
 }
 
-@test "script file exists and is executable" {
-    [ -f "$SCRIPT_PATH" ]
-    [ -x "$SCRIPT_PATH" ]
+@test "script exists and is executable" {
+    [ -f "$SCRIPT_PATH" ] && [ -x "$SCRIPT_PATH" ]
 }
 
-@test "find command available" {
-    command -v find
+@test "--help exits 0 and prints usage" {
+    run "$SCRIPT_PATH" --help
+    assert_success
+    assert_output --partial "Usage:"
 }
 
-@test "script defines target directory variable" {
-    run grep -q "TARGET_DIR=" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
+@test "exits 1 without required --dir argument" {
+    run "$SCRIPT_PATH"
+    assert_failure
 }
 
-@test "script defines days variable" {
-    run grep -q "DAYS=" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
+@test "--dry-run succeeds without moving files" {
+    run "$SCRIPT_PATH" --dir "$WATCH_DIR" --days 0 --archive-dir "$ARCHIVE_DIR" --dry-run
+    assert_success
+    # file should still be in watch dir
+    [ -f "${WATCH_DIR}/keep.txt" ]
 }
 
-@test "script uses find command" {
-    run grep -q "find.*TARGET_DIR" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
+@test "uses find -print0 for safe filename handling" {
+    run grep "print0" "$SCRIPT_PATH"
+    assert_success
 }
 
-@test "script searches for files only" {
-    run grep -q "\-type f" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script uses modification time filter" {
-    run grep -q "\-mtime +\$DAYS" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script executes rm on files" {
-    run grep -q "\-exec rm -f" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script provides completion message" {
-    run grep -q "Files older than.*days have been deleted" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "find can search for old files" {
-    # Create an old file (touch with -t can set timestamp)
-    touch "${TEST_DIR}/test.txt"
-    run find "$TEST_DIR" -type f -name "*.txt"
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "test.txt" ]]
-}
-
-@test "can delete files with find exec" {
-    touch "${TEST_DIR}/delete_me.txt"
-    run find "$TEST_DIR" -name "delete_me.txt" -exec rm -f {} \;
-    [ "$status" -eq 0 ]
-    [ ! -f "${TEST_DIR}/delete_me.txt" ]
+@test "set -euo pipefail is present" {
+    run grep "set -euo pipefail" "$SCRIPT_PATH"
+    assert_success
 }

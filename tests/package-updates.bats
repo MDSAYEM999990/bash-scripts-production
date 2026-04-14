@@ -1,64 +1,38 @@
-#!/usr/bin/env bats
-
-# Tests for package-updates.sh
-
+#\!/usr/bin/env bats
 load 'test_helper/bats-support/load'
 load 'test_helper/bats-assert/load'
 
 setup() {
     export SCRIPT_PATH="${BATS_TEST_DIRNAME}/../scripts/package-updates.sh"
+    export BINSTUB="${BATS_TEST_TMPDIR}/bin"
+    mkdir -p "$BINSTUB"
+
+    # Stub apt to simulate Ubuntu environment
+    cat > "${BINSTUB}/apt" << 'EOF'
+#\!/bin/bash
+echo "mock-apt $*"
+exit 0
+EOF
+    chmod +x "${BINSTUB}/apt"
+    export PATH="${BINSTUB}:$PATH"
 }
 
-@test "script file exists and is executable" {
-    [ -f "$SCRIPT_PATH" ]
-    [ -x "$SCRIPT_PATH" ]
+@test "script exists and is executable" {
+    [ -f "$SCRIPT_PATH" ] && [ -x "$SCRIPT_PATH" ]
 }
 
-@test "apt command available or yum fallback" {
-    command -v apt || command -v yum || skip "package manager not available"
+@test "--help exits 0 and prints usage" {
+    run "$SCRIPT_PATH" --help
+    assert_success
+    assert_output --partial "Usage:"
 }
 
-@test "script updates package list" {
-    run grep -q "apt update" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
+@test "does not use dollar-question-mark anti-pattern" {
+    run grep '\$?' "$SCRIPT_PATH"
+    assert_failure
 }
 
-@test "script uses sudo for apt update" {
-    run grep -q "sudo apt update" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script checks for upgradable packages" {
-    run grep -q "apt list --upgradable" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script counts upgradable packages" {
-    run grep -q "UPGRADES=.*grep -c upgradable" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script compares upgrade count" {
-    run grep -q "if \[.*UPGRADES.*-gt 0" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script performs upgrade" {
-    run grep -q "apt upgrade" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script uses non-interactive upgrade" {
-    run grep -q "apt upgrade -y" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script reports when no updates needed" {
-    run grep -q "No packages need to be upgraded" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script reports when updates are available" {
-    run grep -q "can be upgraded.*Installing updates" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
+@test "set -euo pipefail is present" {
+    run grep "set -euo pipefail" "$SCRIPT_PATH"
+    assert_success
 }

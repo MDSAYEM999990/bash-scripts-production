@@ -1,55 +1,68 @@
 #!/bin/bash
-# Script to display statistics about a git repository
+# git-repo-stats.sh — Print useful statistics about a git repository.
+# Usage: ./git-repo-stats.sh [repo-dir]
+set -euo pipefail
 
-# Check if we're in a git repository
-if ! git rev-parse --git-dir > /dev/null 2>&1; then
-    echo "Error: Not in a git repository"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/utils.sh"
+
+REPO_DIR="${1:-.}"
+
+usage() {
+    cat <<EOF
+Usage: $(basename "$0") [repo-dir]
+
+Print commit count, top contributors, most-modified files, and branch list.
+
+Arguments:
+  repo-dir    Path to the git repository (default: current directory)
+
+Options:
+  -h, --help  Show this help message
+
+Examples:
+  $(basename "$0")
+  $(basename "$0") /opt/myrepo
+EOF
+    exit 0
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help) usage ;;
+        *) REPO_DIR="$1"; shift ;;
+    esac
+done
+
+check_dependency git
+
+cd "$REPO_DIR"
+
+if ! git rev-parse --git-dir &>/dev/null; then
+    log_error "Not a git repository: ${REPO_DIR}"
     exit 1
 fi
 
-# Repository name
-REPO_NAME=$(basename `git rev-parse --show-toplevel`)
+REPO_NAME=$(basename "$(git rev-parse --show-toplevel)")
 
-echo "====================================="
-echo "Git Repository Statistics"
-echo "====================================="
-echo "Repository: $REPO_NAME"
+log_info "Repository: ${REPO_NAME}"
 echo ""
 
-# Total number of commits
-TOTAL_COMMITS=$(git rev-list --all --count)
-echo "Total commits: $TOTAL_COMMITS"
-
-# Number of branches
-BRANCH_COUNT=$(git branch -a | grep -v HEAD | wc -l)
-echo "Total branches: $BRANCH_COUNT"
-
-# Number of contributors
-CONTRIBUTOR_COUNT=$(git log --format='%an' | sort -u | wc -l)
-echo "Total contributors: $CONTRIBUTOR_COUNT"
-
-# Top 5 contributors
-echo ""
-echo "Top 5 contributors:"
-git log --format='%an' | sort | uniq -c | sort -nr | head -5 | awk '{print "  " $2, $3, $4, "(" $1, "commits)"}'
-
-# Most recent commit
-echo ""
-echo "Most recent commit:"
-git log -1 --pretty=format:"  %h - %an, %ar : %s" 
-echo ""
-
-# File statistics
-TOTAL_FILES=$(git ls-files | wc -l)
-echo ""
-echo "Total files tracked: $TOTAL_FILES"
-
-# Lines of code by file type
-echo ""
-echo "Lines of code by file type:"
-git ls-files | grep -E '\.(sh|bash)$' | xargs wc -l 2>/dev/null | tail -1 | awk '{print "  Shell scripts: " $1 " lines"}'
-git ls-files | grep -E '\.(py)$' | xargs wc -l 2>/dev/null | tail -1 | awk '{print "  Python: " $1 " lines"}'
-git ls-files | grep -E '\.(js|jsx)$' | xargs wc -l 2>/dev/null | tail -1 | awk '{print "  JavaScript: " $1 " lines"}'
+echo "=== Commit count ==="
+git rev-list --count HEAD
 
 echo ""
-echo "====================================="
+echo "=== Top 10 contributors ==="
+git shortlog -sn --no-merges HEAD | head -10
+
+echo ""
+echo "=== 10 most modified files ==="
+git log --pretty=format: --name-only | grep -v '^$' | sort | uniq -c | sort -rn | head -10
+
+echo ""
+echo "=== Remote branches ==="
+git branch -r
+
+echo ""
+echo "=== Local branches ==="
+git branch

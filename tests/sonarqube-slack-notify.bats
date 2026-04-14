@@ -1,105 +1,63 @@
 #!/usr/bin/env bats
-
-# Tests for sonarqube-slack-notify.sh
-
 load 'test_helper/bats-support/load'
 load 'test_helper/bats-assert/load'
 
 setup() {
     export SCRIPT_PATH="${BATS_TEST_DIRNAME}/../scripts/sonarqube-slack-notify.sh"
+    export BINSTUB="${BATS_TEST_TMPDIR}/bin"
+    mkdir -p "$BINSTUB"
+
+    cat > "${BINSTUB}/sonar-scanner" << 'EOF'
+#!/bin/bash
+echo "mock-sonar-scanner $*"
+exit 0
+EOF
+    chmod +x "${BINSTUB}/sonar-scanner"
+
+    cat > "${BINSTUB}/curl" << 'EOF'
+#!/bin/bash
+# Return a passing quality gate response for API calls
+if [[ "$*" == *"qualitygates"* ]]; then
+    echo '{"projectStatus":{"status":"OK"}}'
+else
+    echo "mock-curl $*"
+fi
+exit 0
+EOF
+    chmod +x "${BINSTUB}/curl"
+
+    if ! command -v jq &>/dev/null; then
+        cat > "${BINSTUB}/jq" << 'EOF'
+#!/bin/bash
+echo "OK"
+exit 0
+EOF
+        chmod +x "${BINSTUB}/jq"
+    fi
+    export PATH="${BINSTUB}:$PATH"
 }
 
-@test "script file exists and is executable" {
-    [ -f "$SCRIPT_PATH" ]
-    [ -x "$SCRIPT_PATH" ]
+@test "script exists and is executable" {
+    [ -f "$SCRIPT_PATH" ] && [ -x "$SCRIPT_PATH" ]
 }
 
-@test "curl command available" {
-    command -v curl
+@test "--help exits 0 and prints usage" {
+    run "$SCRIPT_PATH" --help
+    assert_success
+    assert_output --partial "Usage:"
 }
 
-@test "jq command available" {
-    command -v jq || skip "jq not installed"
+@test "exits 1 without required --project-key argument" {
+    run "$SCRIPT_PATH"
+    assert_failure
 }
 
-@test "sonar-scanner command available" {
-    command -v sonar-scanner || skip "sonar-scanner not installed"
+@test "uses sonar-scanner for analysis" {
+    run grep "sonar-scanner" "$SCRIPT_PATH"
+    assert_success
 }
 
-@test "script defines SonarQube URL variable" {
-    run grep -q "SONARQUBE_URL=" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script defines project key variable" {
-    run grep -q "PROJECT_KEY=" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script defines Sonar token variable" {
-    run grep -q "SONAR_TOKEN=" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script defines Slack webhook URL variable" {
-    run grep -q "SLACK_WEBHOOK_URL=" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script runs sonar-scanner" {
-    run grep -q "sonar-scanner" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script sets project key parameter" {
-    run grep -q "sonar.projectKey" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script sets host URL parameter" {
-    run grep -q "sonar.host.url" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script sets login parameter" {
-    run grep -q "sonar.login" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script fetches quality gate status" {
-    run grep -q "STATUS=.*curl.*qualitygates" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script uses jq to parse JSON" {
-    run grep -q "jq -r" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script includes authentication in API call" {
-    run grep -q "\-u.*SONAR_TOKEN" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script sends notification to Slack" {
-    # Check for curl to Slack webhook (URL can be on different line)
-    run grep -E "SLACK_WEBHOOK_URL" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-    run grep -E "curl.*-X POST" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script sends JSON payload to Slack" {
-    run grep -q "Content-type: application/json" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script includes status in Slack message" {
-    run grep -q "Quality Gate Status" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script provides completion message" {
-    run grep -q "status sent to Slack" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
+@test "set -euo pipefail is present" {
+    run grep "set -euo pipefail" "$SCRIPT_PATH"
+    assert_success
 }

@@ -1,59 +1,48 @@
 #!/usr/bin/env bats
-
-# Tests for kubectl-namespace-cleanup.sh
-
 load 'test_helper/bats-support/load'
 load 'test_helper/bats-assert/load'
 
 setup() {
     export SCRIPT_PATH="${BATS_TEST_DIRNAME}/../scripts/kubectl-namespace-cleanup.sh"
+    export BINSTUB="${BATS_TEST_TMPDIR}/bin"
+    mkdir -p "$BINSTUB"
+
+    # Default stub: no terminating namespaces (empty jsonpath output = early exit)
+    cat > "${BINSTUB}/kubectl" << 'EOF'
+#!/bin/bash
+if [[ "$1" == "get" && "$2" == "namespaces" ]]; then
+    echo -n ""  # empty: no stuck namespaces
+    exit 0
+fi
+echo "mock-kubectl $*"
+exit 0
+EOF
+    chmod +x "${BINSTUB}/kubectl"
+    export PATH="${BINSTUB}:$PATH"
 }
 
-@test "script file exists and is executable" {
-    [ -f "$SCRIPT_PATH" ]
-    [ -x "$SCRIPT_PATH" ]
+@test "script exists and is executable" {
+    [ -f "$SCRIPT_PATH" ] && [ -x "$SCRIPT_PATH" ]
 }
 
-@test "kubectl command available" {
-    command -v kubectl || skip "kubectl not installed"
+@test "--help exits 0 and prints usage" {
+    run "$SCRIPT_PATH" --help
+    assert_success
+    assert_output --partial "Usage:"
 }
 
-@test "script defines namespace variable" {
-    run grep -q "NAMESPACE=" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
+@test "exits 0 when no namespaces are stuck in Terminating phase" {
+    run "$SCRIPT_PATH"
+    assert_success
+    assert_output --partial "No namespaces"
 }
 
-@test "script prompts for confirmation" {
-    run grep -q "read -p" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
+@test "--dry-run flag is supported" {
+    run grep '\-\-dry-run' "$SCRIPT_PATH"
+    assert_success
 }
 
-@test "script checks confirmation response" {
-    run grep -q "CONFIRMATION" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script can abort on negative confirmation" {
-    run grep -q "Aborted" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script deletes all resources" {
-    run grep -q "kubectl delete all --all" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script deletes namespace" {
-    run grep -q "kubectl delete namespace" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script uses namespace parameter" {
-    run grep -q "\-n.*NAMESPACE" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script provides completion message" {
-    run grep -q "have been deleted" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
+@test "set -euo pipefail is present" {
+    run grep "set -euo pipefail" "$SCRIPT_PATH"
+    assert_success
 }

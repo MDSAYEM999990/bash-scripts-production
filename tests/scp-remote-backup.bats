@@ -1,85 +1,62 @@
 #!/usr/bin/env bats
-
-# Tests for scp-remote-backup.sh
-
 load 'test_helper/bats-support/load'
 load 'test_helper/bats-assert/load'
 
 setup() {
     export SCRIPT_PATH="${BATS_TEST_DIRNAME}/../scripts/scp-remote-backup.sh"
-    export TEST_DIR="${BATS_TEST_TMPDIR}/scp_test"
-    mkdir -p "$TEST_DIR"
+    export BINSTUB="${BATS_TEST_TMPDIR}/bin"
+    mkdir -p "$BINSTUB"
+
+    cat > "${BINSTUB}/tar" << 'EOF'
+#!/bin/bash
+echo "mock-tar $*"
+# Create a fake archive file
+for i in "$@"; do
+    [[ "$i" == *.tar.gz ]] && touch "$i"
+done
+exit 0
+EOF
+    chmod +x "${BINSTUB}/tar"
+
+    cat > "${BINSTUB}/scp" << 'EOF'
+#!/bin/bash
+echo "mock-scp $*"
+exit 0
+EOF
+    chmod +x "${BINSTUB}/scp"
+    export PATH="${BINSTUB}:$PATH"
+
+    export SRC_DIR="${BATS_TEST_TMPDIR}/source"
+    mkdir -p "$SRC_DIR"
+    echo "data" > "${SRC_DIR}/file.txt"
 }
 
-teardown() {
-    rm -rf "$TEST_DIR"
+@test "script exists and is executable" {
+    [ -f "$SCRIPT_PATH" ] && [ -x "$SCRIPT_PATH" ]
 }
 
-@test "script file exists and is executable" {
-    [ -f "$SCRIPT_PATH" ]
-    [ -x "$SCRIPT_PATH" ]
+@test "--help exits 0 and prints usage" {
+    run "$SCRIPT_PATH" --help
+    assert_success
+    assert_output --partial "Usage:"
 }
 
-@test "tar command available" {
-    command -v tar
+@test "exits 1 without required --src argument" {
+    run "$SCRIPT_PATH"
+    assert_failure
 }
 
-@test "scp command available" {
-    command -v scp
+@test "exits 1 without --host argument" {
+    run "$SCRIPT_PATH" --src "$SRC_DIR"
+    assert_failure
 }
 
-@test "script defines log directory variable" {
-    run grep -q "LOG_DIR=" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
+@test "uses TMPDIR or /tmp for temp archive" {
+    run grep 'TMPDIR\|/tmp' "$SCRIPT_PATH"
+    assert_success
 }
 
-@test "script defines backup directory variable" {
-    run grep -q "BACKUP_DIR=" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script generates archive name with timestamp" {
-    run grep -q "ARCHIVE_NAME=.*date" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script defines remote user variable" {
-    run grep -q "REMOTE_USER=" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script defines remote host variable" {
-    run grep -q "REMOTE_HOST=" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script defines remote directory variable" {
-    run grep -q "REMOTE_DIR=" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script creates tar archive" {
-    run grep -q "tar -czf" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script transfers archive via scp" {
-    run grep -q "scp.*REMOTE_USER@\$REMOTE_HOST" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script cleans up local backup" {
-    run grep -q "rm.*ARCHIVE_NAME" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script provides completion message" {
-    run grep -q "Logs backed up" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "can create tar archive" {
-    echo "test" > "${TEST_DIR}/test.txt"
-    run tar -czf "${TEST_DIR}/test.tar.gz" -C "$TEST_DIR" .
-    [ "$status" -eq 0 ]
+@test "set -euo pipefail is present" {
+    run grep "set -euo pipefail" "$SCRIPT_PATH"
+    assert_success
 }

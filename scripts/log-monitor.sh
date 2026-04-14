@@ -2,17 +2,15 @@
 # Log Monitor Script
 # Monitors log files for specific keywords and sends notifications
 # Usage: ./log-monitor.sh <log-file> <keyword1> [keyword2 ...] [options]
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/utils.sh"
 
 # Default configuration
 EMAIL_ENABLED=false
 EMAIL_RECIPIENT=""
 FOLLOW_MODE=true
-
-# Color codes for better output
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-GREEN='\033[0;32m'
-NC='\033[0m' # No Color
 
 # Function to display usage information
 show_usage() {
@@ -46,7 +44,6 @@ Requirements:
     - 'tail' command for real-time monitoring
 
 EOF
-    exit 0
 }
 
 # Function to send email notification
@@ -99,6 +96,7 @@ Log Line: $line"
 for arg in "$@"; do
     if [ "$arg" = "-h" ] || [ "$arg" = "--help" ]; then
         show_usage
+        exit 0
     fi
 done
 
@@ -106,6 +104,7 @@ if [ $# -lt 2 ]; then
     echo -e "${RED}Error: Insufficient arguments${NC}"
     echo ""
     show_usage
+    exit 1
 fi
 
 LOG_FILE="$1"

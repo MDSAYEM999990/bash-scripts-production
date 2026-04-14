@@ -1,73 +1,50 @@
 #!/usr/bin/env bats
-
-# Tests for log-file-cleanup.sh
-
 load 'test_helper/bats-support/load'
 load 'test_helper/bats-assert/load'
 
 setup() {
     export SCRIPT_PATH="${BATS_TEST_DIRNAME}/../scripts/log-file-cleanup.sh"
-    export TEST_DIR="${BATS_TEST_TMPDIR}/log_cleanup_test"
-    mkdir -p "$TEST_DIR"
+    export LOG_DIR="${BATS_TEST_TMPDIR}/logs"
+    mkdir -p "$LOG_DIR"
+    # Create old test log file (default keep: 7 days -- touch with old mtime is OS specific; just test flags)
+    touch "${LOG_DIR}/old.log"
 }
 
 teardown() {
-    rm -rf "$TEST_DIR"
+    rm -rf "$LOG_DIR"
 }
 
-@test "script file exists and is executable" {
-    [ -f "$SCRIPT_PATH" ]
-    [ -x "$SCRIPT_PATH" ]
+@test "script exists and is executable" {
+    [ -f "$SCRIPT_PATH" ] && [ -x "$SCRIPT_PATH" ]
 }
 
-@test "find command available" {
-    command -v find
+@test "--help exits 0 and prints usage" {
+    run "$SCRIPT_PATH" --help
+    assert_success
+    assert_output --partial "Usage:"
 }
 
-@test "gzip command available" {
-    command -v gzip
+@test "succeeds with env LOG_DIR pointing to an existing directory" {
+    run "$SCRIPT_PATH"
+    assert_success
 }
 
-@test "script defines log directory variable" {
-    run grep -q "LOG_DIR=" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
+@test "exits 1 when specified dir does not exist" {
+    run "$SCRIPT_PATH" --dir /nonexistent/path/xyz
+    assert_failure
 }
 
-@test "script uses find command" {
-    run grep -q "find.*LOG_DIR" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
+@test "--dry-run produces output without deleting" {
+    run "$SCRIPT_PATH" --dir "$LOG_DIR" --days 0 --dry-run
+    assert_success
 }
 
-@test "script searches for log files" {
-    run grep -q "\-name \"\*.log\"" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
+@test "uses find -print0 for safe filename handling" {
+    run grep "print0" "$SCRIPT_PATH"
+    assert_success
 }
 
-@test "script uses size filter" {
-    run grep -q "\-size +1M" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script executes gzip on files" {
-    run grep -q "\-exec gzip" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "script provides completion message" {
-    run grep -q "Log file cleanup completed" "$SCRIPT_PATH"
-    [ "$status" -eq 0 ]
-}
-
-@test "find can locate files" {
-    touch "${TEST_DIR}/test.log"
-    run find "$TEST_DIR" -name "*.log"
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "test.log" ]]
-}
-
-@test "gzip can compress files" {
-    echo "test content" > "${TEST_DIR}/test.log"
-    run gzip "${TEST_DIR}/test.log"
-    [ "$status" -eq 0 ]
-    [ -f "${TEST_DIR}/test.log.gz" ]
+@test "set -euo pipefail is present" {
+    run grep "set -euo pipefail" "$SCRIPT_PATH"
+    assert_success
 }

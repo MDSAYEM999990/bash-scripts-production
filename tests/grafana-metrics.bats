@@ -1,25 +1,31 @@
 #!/usr/bin/env bats
-# Tests for health-check.sh
+# Tests for grafana-metrics.sh
 
 load 'test_helper/bats-support/load'
 load 'test_helper/bats-assert/load'
 
 setup() {
-    export SCRIPT_PATH="${BATS_TEST_DIRNAME}/../scripts/health-check.sh"
+    export SCRIPT_PATH="${BATS_TEST_DIRNAME}/../scripts/grafana-metrics.sh"
     export BINSTUB="${BATS_TEST_TMPDIR}/bin"
     mkdir -p "$BINSTUB"
 
-    # Stub systemctl — always report service as active
-    cat > "${BINSTUB}/systemctl" << 'EOF'
+    cat > "${BINSTUB}/curl" << 'EOF'
 #!/bin/bash
-if [[ "$1" == "is-active" ]]; then
-    echo "active"
-    exit 0
-fi
-echo "mock-systemctl $*"
+echo "mock-curl $*"
 exit 0
 EOF
-    chmod +x "${BINSTUB}/systemctl"
+    chmod +x "${BINSTUB}/curl"
+
+    if command -v jq &>/dev/null; then
+        true  # use real jq
+    else
+        cat > "${BINSTUB}/jq" << 'EOF'
+#!/bin/bash
+echo '{}'
+exit 0
+EOF
+        chmod +x "${BINSTUB}/jq"
+    fi
     export PATH="${BINSTUB}:$PATH"
 }
 
@@ -34,15 +40,14 @@ EOF
     assert_output --partial "Usage:"
 }
 
-@test "runs with default services when none specified" {
+@test "exits 1 without required --host argument" {
     run "$SCRIPT_PATH"
-    assert_success
+    assert_failure
 }
 
-@test "reports active when stub returns active" {
-    run "$SCRIPT_PATH" --service nginx
+@test "uses jq to build metric payload" {
+    run grep "jq" "$SCRIPT_PATH"
     assert_success
-    assert_output --partial "active"
 }
 
 @test "set -euo pipefail is present" {

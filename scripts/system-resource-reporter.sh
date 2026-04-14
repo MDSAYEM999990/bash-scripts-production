@@ -2,6 +2,10 @@
 # System Resource Reporter Script
 # Generates comprehensive system resource usage reports
 # Usage: ./system-resource-reporter.sh [options]
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/utils.sh"
 
 # Default configuration
 OUTPUT_FILE=""
@@ -10,12 +14,6 @@ SHOW_MEMORY=true
 SHOW_DISK=true
 SHOW_NETWORK=true
 OUTPUT_FORMAT="table"
-
-# Color codes for better output
-BLUE='\033[0;34m'
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-NC='\033[0m' # No Color
 
 # Function to display usage information
 show_usage() {

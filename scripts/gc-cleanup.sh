@@ -1,21 +1,69 @@
-# Script run garbage collection 
 #!/bin/bash
+# gc-cleanup.sh — Aggressively clean and compact a git repository.
+# Usage: ./gc-cleanup.sh [options]
+set -euo pipefail
 
-# Run git gc prune - remove objects that are no longer pointed to by any object
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/utils.sh"
+
+REPO_DIR="${1:-.}"
+EXPIRY_DAYS=30
+
+usage() {
+    cat <<EOF
+Usage: $(basename "$0") [repo-dir] [options]
+
+Run git garbage collection, repack, prune, and reflog expiry on a repository.
+
+Arguments:
+  repo-dir          Path to the git repository (default: current directory)
+
+Options:
+  --expiry DAYS     Reflog expiry in days (default: ${EXPIRY_DAYS})
+  -h, --help        Show this help message
+
+Examples:
+  $(basename "$0")
+  $(basename "$0") /opt/myrepo --expiry 14
+EOF
+    exit 0
+}
+
+args=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --expiry)  EXPIRY_DAYS="$2"; shift 2 ;;
+        -h|--help) usage ;;
+        *) args+=("$1"); shift ;;
+    esac
+done
+[[ ${#args[@]} -ge 1 ]] && REPO_DIR="${args[0]}"
+
+check_dependency git
+
+cd "$REPO_DIR"
+
+if ! git rev-parse --git-dir &>/dev/null; then
+    log_error "Not a git repository: ${REPO_DIR}"
+    exit 1
+fi
+
+log_info "Running git gc --prune=now..."
 git gc --prune=now
 
-# Run git repack - remove loose objects and pack refs
+log_info "Running git repack (deep compression)..."
 git repack -a -d -f --depth=250 --window=250
 
-# Run git prune - remove objects that are unreferenced and unpacked
+log_info "Running git prune (unreferenced objects)..."
 git prune
 
-# Run git reflog expire - expire reflog entries older than 30 days
-git reflog expire --expire=30.days --all
+log_info "Expiring reflog entries older than ${EXPIRY_DAYS} days..."
+git reflog expire --expire="${EXPIRY_DAYS}.days" --all
 
-# Run git fsck - check the validity of objects in the database
+log_info "Running git fsck (integrity check)..."
 git fsck --full --unreachable --verbose
 
-# Run git gc --aggressive - aggressively compresses the repository
+log_info "Running git gc --aggressive..."
 git gc --aggressive
 
+log_info "Repository cleanup complete."
